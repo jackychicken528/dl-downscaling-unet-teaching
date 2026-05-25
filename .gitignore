@@ -3,3 +3,7 @@ __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 .vscode/
+outputs/
+*.pt
+data/*processed*.npz
+data/*predicted*.npz
