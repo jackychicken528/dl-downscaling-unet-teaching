@@ -30,10 +30,7 @@ BEST_CHECKPOINT_PATH = f"{OUTPUT_DIR}/unet_npz_best.pt"
 LOSS_CURVE_PATH = f"{OUTPUT_DIR}/unet_loss_curve.png"
 
 # Weather variables used as model inputs and outputs.
-DL_OUT_SINGLE_LAYER_PARAMS = ["T2", "TD2", "MSLP", "U10", "V10", "LN_ACC_6H_PRECIP"]
-
-# Upper-air variables are disabled for this lightweight teaching version.
-DL_OUT_UPPER_PARAMS = []
+IN_OUT_PARAMS = ["T2", "TD2", "MSLP", "U10", "V10", "LN_ACC_6H_PRECIP"]
 
 # Static variables are appended to the model input.
 CONSTANT_PARAMS = ["LSM", "HGT"]
