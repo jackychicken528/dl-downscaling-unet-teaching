@@ -3,6 +3,7 @@ import math
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.ticker as mticker
 import numpy as np
 
 import config as cfg
@@ -18,7 +19,7 @@ def plot_loss_curve(train_losses, test_losses, num_epochs=None, title="Training 
     epochs = np.arange(1, len(train_losses) + 1)
 
     # Draw train and test losses on one figure for quick comparison.
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(7, 4), dpi=200)
     ax.plot(epochs, train_losses, marker="o", label="Train")
     ax.plot(epochs, test_losses, marker="o", label="Test")
     ax.set_xlabel("Epoch")
@@ -50,6 +51,15 @@ def grid_lat_lon(shape):
     lat = np.linspace(cfg.DL_DOMAIN["max_lat"], cfg.DL_DOMAIN["min_lat"], shape[0])
     lon = np.linspace(cfg.DL_DOMAIN["min_lon"], cfg.DL_DOMAIN["max_lon"], shape[1])
     return lat, lon
+
+
+def one_degree_ticks(values):
+    """Return whole-degree ticks within a latitude or longitude coordinate range."""
+    min_value = min(values)
+    max_value = max(values)
+    start = math.ceil(min_value)
+    stop = math.floor(max_value)
+    return np.arange(start, stop + 1, 1)
 
 
 def plot_weather_map(
@@ -104,6 +114,8 @@ def plot_weather_map(
         alpha=0.5,
         linestyle="--",
     )
+    gl.xlocator = mticker.FixedLocator(one_degree_ticks(lon))
+    gl.ylocator = mticker.FixedLocator(one_degree_ticks(lat))
     gl.top_labels = False
     gl.right_labels = False
     return mesh, colorbar_label
@@ -128,6 +140,7 @@ def plot_weather_grid(items, ncols=None, figsize_per_panel=(3.2, 3.0), lat=None,
         nrows,
         ncols,
         figsize=(figsize_per_panel[0] * ncols, figsize_per_panel[1] * nrows),
+        dpi=200,
         subplot_kw=subplot_kw,
         constrained_layout=True,
     )
@@ -164,6 +177,7 @@ def plot_weather_rows(rows, weather_variables, lat=None, lon=None):
         len(rows),
         len(weather_variables),
         figsize=(3.3 * len(weather_variables), 2.7 * len(rows)),
+        dpi=200,
         subplot_kw=subplot_kw,
         constrained_layout=True,
     )
