@@ -235,13 +235,211 @@ def plot_weather_grid(
     return fig
 
 
-def plot_weather_rows(rows, weather_variables, lat=None, lon=None):
-    """Backward-compatible wrapper for row-style weather grids."""
-    return plot_weather_grid(
-        rows,
-        ncols=len(weather_variables),
-        figsize_per_panel=(3.3, 2.7),
-        lat=lat,
-        lon=lon,
-        weather_variables=weather_variables,
+# -----------------------------------------------------------------------------
+# Evaluation plots and tables
+# -----------------------------------------------------------------------------
+
+DEFAULT_UNIT_LABELS = {
+    "T2": "K",
+    "TD2": "deg C",
+    "MSLP": "hPa",
+    "U10": "m s-1",
+    "V10": "m s-1",
+    "ACC_6H_PRECIP": "mm",
+}
+
+
+def plot_case_study_comparison(
+    coarse,
+    fine,
+    predicted,
+    lat,
+    lon,
+    variable_names,
+    time_label=None,
+    coarse_stride=3,
+    wind_stride=3,
+):
+    """Plot coarse, fine, and predicted weather maps for one timestep.
+
+    The map follows the reference case-study plot: precipitation is shaded,
+    sea-level pressure is contoured, and 10-m wind is shown with barbs.
+    """
+    variable_names = list(variable_names)
+    precip_idx = variable_names.index("ACC_6H_PRECIP")
+    pressure_idx = variable_names.index("MSLP")
+    u_idx = variable_names.index("U10")
+    v_idx = variable_names.index("V10")
+
+    lat = np.asarray(lat)
+    lon = np.asarray(lon)
+    lon_grid, lat_grid = np.meshgrid(lon, lat)
+    extent = [lon.min(), lon.max(), lat.min(), lat.max()]
+    rain_cmap, rain_norm = custom_rainfall_cmap_norm()
+
+    panel_data = [
+        ("WRF D01 Coarse", np.asarray(coarse), coarse_stride),
+        ("WRF D02 Fine", np.asarray(fine), 1),
+        ("DL Model Downscaled", np.asarray(predicted), 1),
+    ]
+
+    fig, axes = plt.subplots(
+        1,
+        3,
+        figsize=(15, 5),
+        dpi=200,
+        subplot_kw={"projection": ccrs.PlateCarree()},
+        constrained_layout=True,
     )
+
+    precip_mesh = None
+    for ax, (title, data, map_stride) in zip(axes, panel_data):
+        row_slice = slice(None, None, map_stride)
+        col_slice = slice(None, None, map_stride)
+        wind_slice = slice(1, None, wind_stride)
+
+        panel_lon = lon_grid[row_slice, col_slice]
+        panel_lat = lat_grid[row_slice, col_slice]
+        panel_precip = np.maximum(data[precip_idx, row_slice, col_slice], 0.0)
+        panel_pressure = data[pressure_idx, row_slice, col_slice]
+
+        precip_mesh = ax.contourf(
+            panel_lon,
+            panel_lat,
+            panel_precip,
+            levels=cfg.RAINFALL_LEVELS,
+            cmap=rain_cmap,
+            norm=rain_norm,
+            transform=ccrs.PlateCarree(),
+            extend="max",
+        )
+
+        pressure_min = np.floor(np.nanmin(panel_pressure))
+        pressure_max = np.ceil(np.nanmax(panel_pressure))
+        pressure_levels = np.arange(pressure_min, pressure_max + 1, 1)
+        if len(pressure_levels) > 1:
+            pressure_contours = ax.contour(
+                panel_lon,
+                panel_lat,
+                panel_pressure,
+                levels=pressure_levels,
+                colors="tab:blue",
+                linewidths=0.8,
+                transform=ccrs.PlateCarree(),
+            )
+            ax.clabel(pressure_contours, inline=True, fontsize=7)
+
+        if map_stride == 1:
+            barb_lon = lon_grid[wind_slice, wind_slice]
+            barb_lat = lat_grid[wind_slice, wind_slice]
+            barb_u = data[u_idx, wind_slice, wind_slice]
+            barb_v = data[v_idx, wind_slice, wind_slice]
+        else:
+            barb_lon = panel_lon
+            barb_lat = panel_lat
+            barb_u = data[u_idx, row_slice, col_slice]
+            barb_v = data[v_idx, row_slice, col_slice]
+
+        ax.barbs(
+            barb_lon,
+            barb_lat,
+            barb_u,
+            barb_v,
+            length=5,
+            linewidth=0.6,
+            transform=ccrs.PlateCarree(),
+        )
+
+        full_title = title
+        if time_label is not None:
+            full_title = f"{time_label} | {title}"
+        ax.set_title(full_title, fontsize=10)
+        ax.coastlines(resolution="10m", linewidth=0.7)
+        ax.set_extent(extent, crs=ccrs.PlateCarree())
+        gl = ax.gridlines(
+            draw_labels=True,
+            linewidth=0.3,
+            color="gray",
+            alpha=0.5,
+            linestyle="--",
+        )
+        gl.xlocator = mticker.FixedLocator(one_degree_ticks(lon))
+        gl.ylocator = mticker.FixedLocator(one_degree_ticks(lat))
+        gl.top_labels = False
+        gl.right_labels = False
+
+    cbar = fig.colorbar(
+        precip_mesh,
+        ax=axes,
+        orientation="vertical",
+        fraction=0.025,
+        pad=0.02,
+        ticks=cfg.RAINFALL_LEVELS,
+    )
+    cbar.set_label("Precipitation (mm/6h)")
+    return fig
+
+
+def plot_density_qq_grid(fine, predicted, variable_names, unit_labels=None, ncols=3, gridsize=200, cmap="inferno"):
+    """Plot density scatter and Q-Q diagnostics for all variables in one figure."""
+    variable_names = list(variable_names)
+    nrows = math.ceil(len(variable_names) / ncols)
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(5.0 * ncols, 4.2 * nrows),
+        dpi=200,
+        constrained_layout=True,
+    )
+    axes = np.asarray(axes).reshape(-1)
+
+    for channel_index, variable_name in enumerate(variable_names):
+        ax = axes[channel_index]
+        fine_values = np.asarray(fine[:, channel_index], dtype=np.float64).ravel()
+        pred_values = np.asarray(predicted[:, channel_index], dtype=np.float64).ravel()
+        valid = np.isfinite(fine_values) & np.isfinite(pred_values)
+        fine_values = fine_values[valid]
+        pred_values = pred_values[valid]
+
+        fine_sorted = np.sort(fine_values)
+        pred_sorted = np.sort(pred_values)
+        data_min = min(fine_values.min(), pred_values.min())
+        data_max = max(fine_values.max(), pred_values.max())
+        span = data_max - data_min
+        if span == 0:
+            span = 1.0
+
+        if variable_name == "ACC_6H_PRECIP":
+            min_lim = 0.0
+        else:
+            min_lim = data_min - span / 20.0
+        max_lim = data_max + span / 20.0
+
+        hexbin = ax.hexbin(
+            fine_values,
+            pred_values,
+            gridsize=gridsize,
+            bins="log",
+            mincnt=1,
+            cmap=cmap,
+            extent=(min_lim, max_lim, min_lim, max_lim),
+        )
+        ax.plot([min_lim, max_lim], [min_lim, max_lim], color="red", linestyle="--", linewidth=1, label="y=x")
+        ax.plot(fine_sorted, pred_sorted, color="limegreen", linewidth=2, label="Q-Q")
+
+        unit = ""
+        if unit_labels is not None:
+            unit = unit_labels.get(variable_name, "")
+        unit_suffix = f" ({unit})" if unit else ""
+        ax.set_title(variable_name, fontsize=11)
+        ax.set_xlabel(f"WRF D02{unit_suffix}")
+        ax.set_ylabel(f"DL prediction{unit_suffix}")
+        ax.set_xlim(min_lim, max_lim)
+        ax.set_ylim(min_lim, max_lim)
+        ax.legend(fontsize=8)
+        fig.colorbar(hexbin, ax=ax, label="Count")
+
+    for ax in axes[len(variable_names):]:
+        ax.set_visible(False)
+
+    return fig
