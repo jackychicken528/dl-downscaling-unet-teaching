@@ -38,7 +38,7 @@ PRESSURE_LEVELS = [925.0, 850.0, 700.0, 600.0, 500.0, 400.0, 300.0, 250.0, 200.0
 HIGH_RES_SHP = [48, 48]
 
 # Training settings chosen to be small enough for a notebook demo.
-NUM_EPOCHS = 20
+NUM_EPOCHS = 30
 BATCH_SIZE = 8
 LEARNING_RATE = 0.00003
 
@@ -86,6 +86,7 @@ RESIDUAL_STATS = {
 MODEL_KWARGS = {
     "label_dim": 0,
     "use_diffuse": False,
+    # For using a more complex model, comment from line 90 to line 94. The performance would be better but the training time would be longer.
     "model_channels": 32,
     "channel_mult": [1, 2, 2],
     "num_blocks": 1,

@@ -6,6 +6,8 @@ __pycache__/
 backup/
 outputs/
 *.pt
+._*
 data/*_raw.npz
 data/*processed*.npz
 data/*predicted*.npz
+data/*.zip
